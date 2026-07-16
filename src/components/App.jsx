@@ -1,27 +1,24 @@
-import React, { useState, useEffect } from "react";
-import axios from "axios";
+import React, { useState } from "react";
 import { Login } from "./Login";
 import { Wrapped } from "./wrapped/Wrapped";
 
-export const App = () => {
-  const [accessToken, setAccessToken] = useState(
-    localStorage.getItem("accessToken")
-  );
-
-  const fetchToken = async () => {
-    const response = await axios.get("/accessToken");
-    const token = response.data.accessToken;
+// After login the server redirects back with the token in the URL fragment
+// (#access_token=...). Read it once, persist it, and strip it from the URL.
+const readToken = () => {
+  const hash = window.location.hash;
+  if (hash && hash.includes("access_token")) {
+    const token = new URLSearchParams(hash.slice(1)).get("access_token");
     if (token) {
-      setAccessToken(token);
       localStorage.setItem("accessToken", token);
+      window.history.replaceState(null, "", window.location.pathname);
+      return token;
     }
-  };
+  }
+  return localStorage.getItem("accessToken");
+};
 
-  useEffect(() => {
-    if (!accessToken) {
-      fetchToken();
-    }
-  }, []);
+export const App = () => {
+  const [accessToken] = useState(readToken);
 
   return !accessToken ? <Login /> : <Wrapped accessToken={accessToken} />;
 };

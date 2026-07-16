@@ -7,7 +7,9 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 3000,
     proxy: {
-      "/accessToken": "http://127.0.0.1:5000",
+      // Forward the OAuth start to the backend so the frontend can use a
+      // relative "/login" URL in both dev and the deployed single service.
+      "/login": "http://127.0.0.1:5000",
     },
   },
 });

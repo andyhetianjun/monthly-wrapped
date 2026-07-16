@@ -62,7 +62,7 @@ export const Login = () => {
       if (ctx.state === "suspended") ctx.resume();
       const now = ctx.currentTime;
 
-      // Tonal body — quick downward pitch sweep.
+      // Tonal body: quick downward pitch sweep.
       const osc = ctx.createOscillator();
       osc.type = "triangle";
       osc.frequency.setValueAtTime(1400, now);
@@ -76,7 +76,7 @@ export const Login = () => {
       osc.start(now);
       osc.stop(now + 0.12);
 
-      // Noise transient — the crisp attack.
+      // Noise transient: the crisp attack.
       const size = Math.floor(ctx.sampleRate * 0.03);
       const buffer = ctx.createBuffer(1, size, ctx.sampleRate);
       const data = buffer.getChannelData(0);
@@ -131,7 +131,7 @@ export const Login = () => {
   };
 
   const redirect = () => {
-    window.location.href = "http://127.0.0.1:5000/login";
+    window.location.href = "/login";
   };
 
   return (
@@ -211,7 +211,7 @@ export const Login = () => {
         </div>
       </div>
 
-      {/* Cyclic disc carousel — drag or click to shuffle, centred on the middle */}
+      {/* Cyclic disc carousel: drag or click to shuffle, centred on the middle */}
       <div
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

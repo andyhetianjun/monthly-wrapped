@@ -93,16 +93,10 @@ export const useWrappedData = (accessToken, timeRange = "short_term") => {
         getTopArtists(),
       ]);
 
-      // The token lives in server memory and lasts ~1h with no refresh flow.
-      // Once it expires every call 401s — clear it and return to Login instead
-      // of rendering a broken, empty card. Hitting /logout clears the server's
-      // stale token too, so the reload lands on Login rather than looping.
+      // The token lasts ~1h with no refresh flow. Once it expires every call
+      // 401s, so clear it and return to Login instead of rendering a broken,
+      // empty card. (No server state to reset with the per-user token model.)
       if (wasUnauthorized(tracksResult) || wasUnauthorized(artistsResult)) {
-        try {
-          await axios.get("http://127.0.0.1:5000/logout");
-        } catch (err) {
-          // Already logging out; ignore.
-        }
         localStorage.removeItem("accessToken");
         window.location.href = "/";
         return;

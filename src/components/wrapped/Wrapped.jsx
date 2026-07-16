@@ -205,10 +205,21 @@ const Arrow = ({ side, color, onClick }) => (
       fontSize: "clamp(2.2rem, 6vw, 3.6rem)",
       lineHeight: 1,
       padding: "10px",
-      textShadow: "0 1px 8px rgba(0,0,0,0.25)",
     }}
   >
-    {side === "left" ? "❮" : "❯"}
+    <svg
+      width="1em"
+      height="1em"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ display: "block", filter: "drop-shadow(0 1px 6px rgba(0,0,0,0.25))" }}
+    >
+      <polyline points={side === "left" ? "15 6 9 12 15 18" : "9 6 15 12 9 18"} />
+    </svg>
   </button>
 );
 
@@ -298,7 +309,7 @@ export const Wrapped = ({ accessToken }) => {
           boxSizing: "border-box",
         }}
       >
-        {/* Background stack: base color · album wall · tint overlay */}
+        {/* Background stack: base color, album wall, tint overlay */}
         <div style={{ position: "absolute", inset: 0, zIndex: 0, backgroundColor: theme.pageBg }} />
         <Backdrop covers={albumArt} />
         <div style={{ position: "absolute", inset: 0, zIndex: 2, backgroundColor: theme.tint }} />
@@ -378,7 +389,7 @@ export const Wrapped = ({ accessToken }) => {
                 padding: "16px",
               }}
             >
-              {/* Header: vertical month · hero art w/ song title · swatch */}
+              {/* Header: vertical month, hero art w/ song title, swatch */}
               <div
                 style={{
                   display: "flex",
