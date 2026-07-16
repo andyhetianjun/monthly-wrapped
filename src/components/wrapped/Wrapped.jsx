@@ -387,19 +387,24 @@ export const Wrapped = ({ accessToken }) => {
                   gap: "10px",
                 }}
               >
-                <span
-                  style={{
-                    writingMode: "vertical-rl",
-                    transform: "rotate(180deg)",
-                    fontWeight: 800,
-                    fontSize: "42px",
-                    letterSpacing: "1px",
-                    color: theme.accent,
-                    lineHeight: 1,
-                  }}
-                >
-                  {month}
-                </span>
+                <div style={{ position: "relative", width: 44, height: 150, flexShrink: 0 }}>
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: "50%",
+                      left: "50%",
+                      transform: "translate(-50%, -50%) rotate(-90deg)",
+                      whiteSpace: "nowrap",
+                      fontWeight: 800,
+                      fontSize: "40px",
+                      letterSpacing: "2px",
+                      color: theme.accent,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {month}
+                  </span>
+                </div>
 
                 <div style={{ position: "relative", width: 150, height: 150 }}>
                   <img
@@ -422,9 +427,8 @@ export const Wrapped = ({ accessToken }) => {
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        padding: "22px 10px 9px",
-                        background:
-                          "linear-gradient(transparent, rgba(0,0,0,0.78))",
+                        padding: "8px 10px 9px",
+                        background: "rgba(0, 0, 0, 0.62)",
                         color: "#ffffff",
                         fontWeight: 700,
                         fontSize: "14px",
