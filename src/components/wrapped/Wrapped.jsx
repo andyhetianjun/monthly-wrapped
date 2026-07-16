@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useWrappedData } from "../../useWrappedData";
 import html2canvas from "html2canvas";
 import { WrappedList } from "./WrappedList";
@@ -7,9 +7,9 @@ import { Swatch } from "./Swatch";
 import { Button } from "../Button";
 import { RecordPlayer } from "../RecordPlayer";
 
-// Cycle through these with the on-screen arrows. Each recolors the page,
-// card, month text, download button, and picks a swatch shape.
-const THEMES = [
+// The set themes (the dynamic top-song theme is prepended at runtime). Each
+// recolors the page, card, month text, download button, and swatch shape.
+const SET_THEMES = [
   {
     name: "Blossom",
     pageBg: "#ddb2ba",
@@ -56,6 +56,103 @@ const THEMES = [
     shape: "rings",
   },
 ];
+
+// --- Colour helpers for deriving a theme from the top-song cover ---
+const hexToRgb = (hex) => {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+};
+const rgbToHex = (r, g, b) =>
+  "#" +
+  [r, g, b]
+    .map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0"))
+    .join("");
+const rgbToHsl = (r, g, b) => {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  let h = 0;
+  let s = 0;
+  if (d) {
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h /= 6;
+  }
+  return [h, s, l];
+};
+const hueOf = (hex) => rgbToHsl(...hexToRgb(hex))[0] * 360;
+const hueDist = (a, b) => {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+};
+const mix = (c1, c2, t) => c1.map((v, i) => v * (1 - t) + c2[i] * t);
+
+// Load the cover cross-origin, sample it, and build a pastel theme from its
+// most vibrant colour. Resolves null on any failure (falls back to set themes).
+const extractTheme = (url) =>
+  new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const S = 24;
+        const canvas = document.createElement("canvas");
+        canvas.width = S;
+        canvas.height = S;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, S, S);
+        const { data } = ctx.getImageData(0, 0, S, S);
+        let best = null;
+        let bestScore = -1;
+        let rs = 0;
+        let gs = 0;
+        let bs = 0;
+        let n = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] < 125) continue;
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          rs += r;
+          gs += g;
+          bs += b;
+          n += 1;
+          const [, s, l] = rgbToHsl(r, g, b);
+          const score = s * (1 - Math.abs(l - 0.5));
+          if (s > 0.35 && l > 0.2 && l < 0.8 && score > bestScore) {
+            bestScore = score;
+            best = [r, g, b];
+          }
+        }
+        if (!n) return resolve(null);
+        const accentRgb = best || [rs / n, gs / n, bs / n];
+        const pageRgb = mix(accentRgb, [255, 255, 255], 0.62).map(Math.round);
+        resolve({
+          name: "Top Song",
+          pageBg: rgbToHex(...pageRgb),
+          tint: `rgba(${pageRgb[0]}, ${pageRgb[1]}, ${pageRgb[2]}, 0.55)`,
+          accent: rgbToHex(...accentRgb),
+          cardBg: "#ffffff",
+          cardText: "#111111",
+          shape: "checker",
+        });
+      } catch (e) {
+        resolve(null); // tainted canvas / no CORS
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
 
 // Full-stage blurred wall of the user's album covers, behind the card.
 const Backdrop = ({ covers }) => {
@@ -117,7 +214,7 @@ const Arrow = ({ side, color, onClick }) => (
 
 export const Wrapped = ({ accessToken }) => {
   const [themeIndex, setThemeIndex] = useState(0);
-  const theme = THEMES[themeIndex];
+  const [dynamicTheme, setDynamicTheme] = useState(null);
 
   const {
     isLoading,
@@ -126,25 +223,54 @@ export const Wrapped = ({ accessToken }) => {
     albumArt,
     topSongImg,
     topSongName,
+    topSongId,
     topDecade,
     uniqueArtists,
   } = useWrappedData(accessToken);
+
+  // First theme is derived from the top song's cover; the rest are our set
+  // themes, minus any whose hue is too close to the derived one (dedupe).
+  const themes = useMemo(() => {
+    if (!dynamicTheme) return SET_THEMES;
+    const dHue = hueOf(dynamicTheme.accent);
+    const rest = SET_THEMES.filter((t) => hueDist(hueOf(t.accent), dHue) > 28);
+    return [dynamicTheme, ...rest];
+  }, [dynamicTheme]);
+
+  const theme = themes[Math.min(themeIndex, themes.length - 1)];
+
+  // Derive the top-song theme once the cover is known; land on it first.
+  useEffect(() => {
+    if (!topSongImg) return;
+    let cancelled = false;
+    extractTheme(topSongImg).then((t) => {
+      if (!cancelled && t) {
+        setDynamicTheme(t);
+        setThemeIndex(0);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [topSongImg]);
 
   const month = new Date()
     .toLocaleString("en-US", { month: "long" })
     .toUpperCase();
 
   const cycleTheme = (delta) =>
-    setThemeIndex((i) => (i + delta + THEMES.length) % THEMES.length);
+    setThemeIndex((i) => (i + delta + themes.length) % themes.length);
 
   const handleImageDownload = async () => {
     const element = document.getElementById("stage"),
       canvas = await html2canvas(element, {
         useCORS: true,
         backgroundColor: null,
-        // Keep the Download button out of the captured image.
+        // Keep the Download button and web-only player out of the image.
         ignoreElements: (el) =>
-          el.classList && el.classList.contains("downloadBar"),
+          el.classList &&
+          (el.classList.contains("downloadBar") ||
+            el.classList.contains("spotifyPlayer")),
       }),
       data = canvas.toDataURL("image/jpg"),
       link = document.createElement("a");
@@ -185,7 +311,7 @@ export const Wrapped = ({ accessToken }) => {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: "10px",
+            gap: "6px",
             width: "100%",
           }}
         >
@@ -209,7 +335,7 @@ export const Wrapped = ({ accessToken }) => {
                 fontWeight: 800,
                 letterSpacing: "-0.02em",
                 lineHeight: 1.02,
-                fontSize: "clamp(1.9rem, 7vw, 3rem)",
+                fontSize: "clamp(1.7rem, 6.5vw, 2.7rem)",
                 color: theme.cardText === "#ffffff" ? "#ffffff" : "#1a1a1a",
                 textShadow:
                   theme.cardText === "#ffffff"
@@ -243,13 +369,13 @@ export const Wrapped = ({ accessToken }) => {
               style={{
                 display: "flex",
                 flexDirection: "column",
-                gap: "14px",
+                gap: "10px",
                 width: "min(460px, 92vw)",
                 boxSizing: "border-box",
                 backgroundColor: theme.cardBg,
                 color: theme.cardText,
                 borderRadius: "22px",
-                padding: "22px",
+                padding: "16px",
               }}
             >
               {/* Header: vertical month · hero art w/ song title · swatch */}
@@ -275,15 +401,15 @@ export const Wrapped = ({ accessToken }) => {
                   {month}
                 </span>
 
-                <div style={{ position: "relative", width: 190, height: 190 }}>
+                <div style={{ position: "relative", width: 150, height: 150 }}>
                   <img
-                    width={190}
-                    height={190}
+                    width={150}
+                    height={150}
                     src={topSongImg}
                     alt="top-song"
                     style={{
-                      width: 190,
-                      height: 190,
+                      width: 150,
+                      height: 150,
                       objectFit: "cover",
                       borderRadius: 8,
                       display: "block",
@@ -360,6 +486,31 @@ export const Wrapped = ({ accessToken }) => {
               </div>
             </div>
           )}
+
+          {!isLoading && topSongId ? (
+            <div
+              className="spotifyPlayer"
+              style={{
+                width: "min(460px, 92vw)",
+                lineHeight: 0,
+                backgroundColor: theme.pageBg,
+                padding: "6px",
+                borderRadius: "16px",
+                boxSizing: "border-box",
+              }}
+            >
+              <iframe
+                title="Top song player"
+                src={`https://open.spotify.com/embed/track/${topSongId}`}
+                width="100%"
+                height="80"
+                frameBorder="0"
+                loading="lazy"
+                allow="encrypted-media"
+                style={{ borderRadius: "12px", display: "block" }}
+              />
+            </div>
+          ) : null}
 
           <div
             className="downloadBar"

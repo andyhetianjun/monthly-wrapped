@@ -8,6 +8,7 @@ export const useWrappedData = (accessToken, timeRange = "short_term") => {
   const [albumArt, setAlbumArt] = useState([]);
   const [topSongImg, setTopSongImg] = useState("");
   const [topSongName, setTopSongName] = useState("");
+  const [topSongId, setTopSongId] = useState("");
   const [topDecade, setTopDecade] = useState("N/A");
   const [uniqueArtists, setUniqueArtists] = useState("N/A");
 
@@ -66,6 +67,7 @@ export const useWrappedData = (accessToken, timeRange = "short_term") => {
     ]);
     setTopSongName(topTracks[0]?.name || "");
     setTopSongImg(topTracks[0]?.album?.images?.[0]?.url || "");
+    setTopSongId(topTracks[0]?.id || "");
     setTopDecade(computeTopDecade(topTracks));
     setUniqueArtists(computeUniqueArtists(topTracks));
     return topTracks;
@@ -125,6 +127,7 @@ export const useWrappedData = (accessToken, timeRange = "short_term") => {
     albumArt,
     topSongImg,
     topSongName,
+    topSongId,
     topDecade,
     uniqueArtists,
   };
