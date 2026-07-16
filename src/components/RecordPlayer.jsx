@@ -1,6 +1,6 @@
 import React from "react";
 
-export const RecordPlayer = ({ size = 200 }) => {
+export const RecordPlayer = ({ size = 200, accent = "#ed6752" }) => {
   return (
     <div style={{ width: size, height: size, position: "relative" }}>
       <style>{`
@@ -25,7 +25,7 @@ export const RecordPlayer = ({ size = 200 }) => {
             width: size * 0.32,
             height: size * 0.32,
             borderRadius: "50%",
-            backgroundColor: "#ed6752",
+            backgroundColor: accent,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",

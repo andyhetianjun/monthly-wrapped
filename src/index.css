@@ -4,3 +4,15 @@ body {
     "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
     sans-serif;
 }
+
+/* On phones, hide the Download button — a screenshot works fine there. */
+@media (max-width: 600px) {
+  .downloadBar {
+    display: none !important;
+  }
+}
+
+/* Hide the scrollbar on the login disc strip (still scrollable). */
+.discScroller::-webkit-scrollbar {
+  display: none;
+}

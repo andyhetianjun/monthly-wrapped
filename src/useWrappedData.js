@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
-const TIME_RANGE = "long_term";
-
-export const useWrappedData = (accessToken) => {
+export const useWrappedData = (accessToken, timeRange = "short_term") => {
   const [isLoading, setIsLoading] = useState(true);
   const [songs, setSongs] = useState([]);
   const [artists, setArtists] = useState([]);
-  const [recentlyPlayed, setRecentlyPlayed] = useState("N/A");
-  const [topGenre, setTopGenre] = useState("N/A");
+  const [albumArt, setAlbumArt] = useState([]);
   const [topSongImg, setTopSongImg] = useState("");
+  const [topSongName, setTopSongName] = useState("");
+  const [topDecade, setTopDecade] = useState("N/A");
+  const [uniqueArtists, setUniqueArtists] = useState("N/A");
 
   const fetch = async (endpoint) => {
     const result = await axios.get(`https://api.spotify.com/${endpoint}`, {
@@ -20,95 +20,112 @@ export const useWrappedData = (accessToken) => {
     return result.data;
   };
 
-  const getArtists = async (idList) => {
-    if (!idList) return [];
-    return (await fetch(`v1/artists?ids=${encodeURIComponent(idList)}`))
-      .artists;
+  // Most common release decade across the given tracks, e.g. "2020s".
+  const computeTopDecade = (tracks) => {
+    const decades = new Map();
+    let best = null;
+    let bestCount = 0;
+    tracks.forEach((track) => {
+      const date = track.album?.release_date;
+      if (!date) return;
+      const year = parseInt(date.slice(0, 4), 10);
+      if (Number.isNaN(year)) return;
+      const decade = Math.floor(year / 10) * 10;
+      const count = (decades.get(decade) || 0) + 1;
+      decades.set(decade, count);
+      if (count > bestCount) {
+        best = decade;
+        bestCount = count;
+      }
+    });
+    return best === null ? "N/A" : `${best}s`;
+  };
+
+  // Number of distinct artists across the given tracks.
+  const computeUniqueArtists = (tracks) => {
+    const ids = new Set();
+    tracks.forEach((track) =>
+      (track.artists || []).forEach((artist) => {
+        if (artist.id) ids.add(artist.id);
+      })
+    );
+    return ids.size > 0 ? String(ids.size) : "N/A";
   };
 
   const getTopTracks = async () => {
     const topTracks = (
-      await fetch(`v1/me/top/tracks?time_range=${TIME_RANGE}&limit=50`)
+      await fetch(`v1/me/top/tracks?time_range=${timeRange}&limit=50`)
     ).items;
     setSongs(topTracks.slice(0, 5).map((track) => track.name));
-    if (topTracks.length > 0 && topTracks[0].album?.images?.[0]?.url) {
-      setTopSongImg(topTracks[0].album.images[0].url);
-    }
+    setAlbumArt([
+      ...new Set(
+        topTracks
+          .map((track) => track.album?.images?.[0]?.url)
+          .filter(Boolean)
+      ),
+    ]);
+    setTopSongName(topTracks[0]?.name || "");
+    setTopSongImg(topTracks[0]?.album?.images?.[0]?.url || "");
+    setTopDecade(computeTopDecade(topTracks));
+    setUniqueArtists(computeUniqueArtists(topTracks));
     return topTracks;
   };
 
   const getTopArtists = async () => {
     const topArtists = (
-      await fetch(`v1/me/top/artists?time_range=${TIME_RANGE}&limit=50`)
+      await fetch(`v1/me/top/artists?time_range=${timeRange}&limit=50`)
     ).items;
     setArtists(topArtists.slice(0, 5).map((artist) => artist.name));
     return topArtists;
   };
 
-  const getRecentlyPlayed = async () => {
-    const items = (await fetch("v1/me/player/recently-played?limit=1")).items;
-    if (items.length > 0) {
-      setRecentlyPlayed(items[0].track.name);
-    }
-  };
-
-  const findMostFrequent = (array) => {
-    if (!array || array.length === 0) return "N/A";
-    const countMap = new Map();
-    let mostFrequent = array[0];
-    let maxCount = 0;
-    array.forEach((item) => {
-      const count = (countMap.get(item) || 0) + 1;
-      countMap.set(item, count);
-      if (count > maxCount) {
-        mostFrequent = item;
-        maxCount = count;
-      }
-    });
-    return mostFrequent.charAt(0).toUpperCase() + mostFrequent.slice(1);
-  };
-
-  const getIdList = (trackArtistIds) => {
-    return trackArtistIds.join(",");
-  };
-
-  const getTopGenre = async () => {
-    const topTracks = await getTopTracks();
-    const topArtists = await getTopArtists();
-
-    const trackArtists = topTracks.map((item) => item.artists).flat();
-    const trackArtistIds = trackArtists.map((item) => item.id);
-
-    let trackArtistGenres = [];
-    if (trackArtistIds.length > 0) {
-      const idsFirstSet = getIdList(trackArtistIds.slice(0, 38));
-      const idsSecondSet = getIdList(trackArtistIds.slice(38, 76));
-      const firstSet = await getArtists(idsFirstSet);
-      const secondSet = await getArtists(idsSecondSet);
-      trackArtistGenres = firstSet
-        .concat(secondSet)
-        .map((item) => item.genres)
-        .flat();
-    }
-
-    const artistGenres = topArtists.map((item) => item.genres).flat();
-    const topGenres = trackArtistGenres.concat(artistGenres);
-    setTopGenre(findMostFrequent(topGenres));
-    setIsLoading(false);
-  };
+  const wasUnauthorized = (result) =>
+    result.status === "rejected" && result.reason?.response?.status === 401;
 
   useEffect(() => {
     const load = async () => {
-      try {
-        await getTopGenre();
-        await getRecentlyPlayed();
-      } catch (err) {
-        console.error("Failed to load wrapped data:", err);
-        setIsLoading(false);
+      setIsLoading(true);
+      // Each stat fetches on its own so one failure can't cascade into another.
+      const [tracksResult, artistsResult] = await Promise.allSettled([
+        getTopTracks(),
+        getTopArtists(),
+      ]);
+
+      // The token lives in server memory and lasts ~1h with no refresh flow.
+      // Once it expires every call 401s — clear it and return to Login instead
+      // of rendering a broken, empty card. Hitting /logout clears the server's
+      // stale token too, so the reload lands on Login rather than looping.
+      if (wasUnauthorized(tracksResult) || wasUnauthorized(artistsResult)) {
+        try {
+          await axios.get("http://127.0.0.1:5000/logout");
+        } catch (err) {
+          // Already logging out; ignore.
+        }
+        localStorage.removeItem("accessToken");
+        window.location.href = "/";
+        return;
       }
+
+      if (tracksResult.status === "rejected") {
+        console.error("Failed to load top tracks:", tracksResult.reason);
+      }
+      if (artistsResult.status === "rejected") {
+        console.error("Failed to load top artists:", artistsResult.reason);
+      }
+
+      setIsLoading(false);
     };
     load();
-  }, []);
+  }, [timeRange]);
 
-  return { isLoading, songs, artists, recentlyPlayed, topGenre, topSongImg };
+  return {
+    isLoading,
+    songs,
+    artists,
+    albumArt,
+    topSongImg,
+    topSongName,
+    topDecade,
+    uniqueArtists,
+  };
 };
